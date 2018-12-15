@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 
 
 def draw_graph(file_name):
-    valid_transaction = pd.read_csv('valid_transaction/valid_transaction_{}.csv'.format(file_name))
-    screened_data = pd.read_hdf('screened_data/{}.h5'.format(file_name), key='df')
+    valid_transaction = pd.read_csv('valid_transactions/valid_transaction_{}.csv'.format(file_name))
+    screened_data = pd.read_hdf('paired_data/{}.h5'.format(file_name), key='df')
 
     plt.figure()
     screened_data.plot()

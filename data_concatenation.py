@@ -6,10 +6,12 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
+DATE = 'date'
+
 DATETIME = 'DATETIME'
 
 
-def concatenate_data(etf_1_name, etf_2_name):
+def pair_data(etf_1_name, etf_2_name):
     file_name = '{}_{}'.format(etf_1_name, etf_2_name)
     print(file_name)
 
@@ -28,22 +30,25 @@ def concatenate_data(etf_1_name, etf_2_name):
     for column in columns:
         data['next_' + column] = data[column].shift(-1)
 
-    data['date'] = data[DATETIME].dt.to
-    for column in columns:
-        data['last_' + column] = data.groupby(by=DATETIME)[column].last()
+    data[DATE] = pd.to_datetime(data[DATETIME]).dt.normalize()
     data.dropna(inplace=True)
+    for column in columns:
+        last_columns = data[[DATE, column]].groupby(by=DATE).last().reset_index(drop=False)
+        last_columns.rename(index=str, columns={column: 'last_' + column}, inplace=True)
+        data = data.merge(last_columns, on=DATE)
+
     data[DATETIME] = pd.to_datetime(data[DATETIME])
     data.set_index(DATETIME, inplace=True)
 
     data[columns].plot()
     plt.title(file_name)
-    plt.savefig('screened_image/{}.png'.format(file_name))
+    plt.savefig('paired_image/{}.png'.format(file_name))
     plt.show()
-    data.to_hdf('screened_data/{}.h5'.format(file_name), key='df', format='table', mode='w')
+    data.to_hdf('paired_data/{}.h5'.format(file_name), key='df', format='table', mode='w')
 
 
-# concatenate_data('SPY', 'IVV')
-# concatenate_data('IVV', 'VOO')
-# concatenate_data('VOO', 'SPY')
-concatenate_data('SPYG', 'VOOG')
-# concatenate_data('SPYV', 'VOOV')
+pair_data('SPY', 'IVV')
+pair_data('IVV', 'VOO')
+pair_data('VOO', 'SPY')
+pair_data('SPYG', 'VOOG')
+pair_data('SPYV', 'VOOV')

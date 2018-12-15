@@ -11,9 +11,7 @@ BID = 'BID'
 ASK_MIN = 'ASK_min'
 BID_MAX = 'BID_max'
 
-etfs = [
-    # 'IVV',
-    'SPY', 'SPYG', 'SPYV', 'VOO', 'VOOG', 'VOOV']
+etfs = ['IVV', 'SPY', 'SPYG', 'SPYV', 'VOO', 'VOOG', 'VOOV']
 
 DATETIME = 'DATETIME'
 

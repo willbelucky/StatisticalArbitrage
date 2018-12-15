@@ -5,30 +5,44 @@
 """
 import pandas as pd
 import numpy as np
-from copy import deepcopy
 
 CLOSE_ASK = 'close_ask'
 CLOSE_BID = 'close_bid'
 OPEN_ASK = 'open_ask'
 OPEN_BID = 'open_bid'
+LAST_ASK = 'last_ask'
+LAST_BID = 'last_bid'
 CLOSE_TIME = 'close_time'
 OPEN_SIGNAL = 'open_signal'
 CLOSE_SIGNAL = 'close_signal'
 OPEN_TIME = 'open_time'
+LAST_TIME = 'last_time'
 TIME = 'time'
 
+BID_1 = 'BID_1'
+ASK_1 = 'ASK_1'
+BID_2 = 'BID_2'
+ASK_2 = 'ASK_2'
 
-def get_table(data: pd.DataFrame, open_bid, open_ask, close_bid, close_ask, ratio_1, ratio_2, criteria, tol):
+
+def get_table(data: pd.DataFrame, open_bid, open_ask, close_bid, close_ask, ratio_1, ratio_2, criteria, tol,
+              stop_loss=False):
     table = data.copy()
     table[TIME] = table.index
     table[OPEN_SIGNAL] = table[open_bid] / (ratio_1 * table[open_ask]) - 1
     table[CLOSE_SIGNAL] = table[close_bid] / (ratio_2 * table[close_ask]) - 1
     table[OPEN_TIME] = table.index
     table[CLOSE_TIME] = table.index
-    table.rename(columns={open_bid: OPEN_BID, open_ask: OPEN_ASK,
-                          close_bid: CLOSE_BID, close_ask: CLOSE_ASK}, inplace=True)
+    table.rename(columns={
+        'next_' + open_bid: OPEN_BID,
+        'next_' + open_ask: OPEN_ASK,
+        'next_' + close_bid: CLOSE_BID,
+        'next_' + close_ask: CLOSE_ASK,
+        'last_' + close_bid: LAST_BID,
+        'last_' + close_ask: LAST_ASK
+    }, inplace=True)
 
-    open_table = table.loc[table[OPEN_SIGNAL] > criteria, [TIME, OPEN_TIME, OPEN_BID, OPEN_ASK]]
+    open_table = table.loc[table[OPEN_SIGNAL] > criteria, [TIME, OPEN_TIME, OPEN_BID, OPEN_ASK, LAST_BID, LAST_ASK]]
     print('Open: {}({}%)'.format(len(open_table), len(open_table) * 100 / len(table)))
 
     close_table = table.loc[np.abs(table[CLOSE_SIGNAL]) < tol, [TIME, CLOSE_TIME, CLOSE_BID, CLOSE_ASK]]
@@ -40,22 +54,38 @@ def get_table(data: pd.DataFrame, open_bid, open_ask, close_bid, close_ask, rati
     concat_table[CLOSE_BID] = concat_table[CLOSE_BID].fillna(method='bfill')
     concat_table[CLOSE_ASK] = concat_table[CLOSE_ASK].fillna(method='bfill')
     concat_table.dropna(inplace=True)
-    concat_table.drop(columns=[TIME], inplace=True)
+
+    if stop_loss:
+        concat_table.loc[
+            concat_table[CLOSE_TIME].dt.normalize() != concat_table[OPEN_TIME].dt.normalize(), CLOSE_BID
+        ] = concat_table.loc[
+            concat_table[CLOSE_TIME].dt.normalize() != concat_table[OPEN_TIME].dt.normalize(), LAST_BID
+        ]
+        concat_table.loc[
+            concat_table[CLOSE_TIME].dt.normalize() != concat_table[OPEN_TIME].dt.normalize(), CLOSE_ASK
+        ] = concat_table.loc[
+            concat_table[CLOSE_TIME].dt.normalize() != concat_table[OPEN_TIME].dt.normalize(), LAST_ASK
+        ]
+        concat_table.loc[
+            concat_table[CLOSE_TIME].dt.normalize() != concat_table[OPEN_TIME].dt.normalize(), CLOSE_TIME
+        ] = concat_table.loc[
+            concat_table[CLOSE_TIME].dt.normalize() != concat_table[OPEN_TIME].dt.normalize(), OPEN_TIME
+        ].apply(lambda dt: dt.replace(hour=15, minute=55, second=0))
+
+    concat_table.drop(columns=[TIME, LAST_BID, LAST_ASK], inplace=True)
     return concat_table
 
 
-def save_transactions(etf_1, etf_2, number=None, criteria=0.002, tol=0.00001):
-    if number:
-        file_name = '{}_{}_{}'.format(etf_1, etf_2, number)
-    else:
-        file_name = '{}_{}'.format(etf_1, etf_2)
+# noinspection PyTypeChecker
+def save_rolling_transactions(etf_1, etf_2, criteria=0.002, tol=0.00001):
+    file_name = '{}_{}'.format(etf_1, etf_2)
     print(file_name)
-    screened_data = pd.read_hdf('screened_data/{}.h5'.format(file_name), key='df')
+    paired_data = pd.read_hdf('paired_data/{}.h5'.format(file_name), key='df')
 
     #     VOO - 0.91 * IVV
     #     IVV - 1.10 * VOO
     if etf_1 == 'IVV' and etf_2 == 'VOO':
-        ratio_etf1_per_etf2 = 1.103
+        ratio_etf1_per_etf2 = 1.102
         ratio_etf2_per_etf1 = 1 / ratio_etf1_per_etf2
 
     #     SPY - 1.09 * VOO
@@ -90,39 +120,23 @@ def save_transactions(etf_1, etf_2, number=None, criteria=0.002, tol=0.00001):
     else:
         raise NameError('여기 없는 코드를 입력했습니다.')
 
-    bid_1 = '{}_bid'.format(etf_1)
-    ask_1 = '{}_ask'.format(etf_1)
-    bid_2 = '{}_bid'.format(etf_2)
-    ask_2 = '{}_ask'.format(etf_2)
-
     print('ETF 1 Overvalued')
-    table_a = get_table(screened_data, bid_1, ask_2, bid_2, ask_1, ratio_etf1_per_etf2,
+    table_a = get_table(paired_data, BID_1, ASK_2, BID_2, ASK_1, ratio_etf1_per_etf2,
                         ratio_etf2_per_etf1, criteria, tol)
     print('ETF 2 Overvalued')
-    table_b = get_table(screened_data, bid_2, ask_1, bid_1, ask_2, ratio_etf2_per_etf1,
+    table_b = get_table(paired_data, BID_2, ASK_1, BID_1, ASK_2, ratio_etf2_per_etf1,
                         ratio_etf1_per_etf2, criteria, tol)
-    print('Total: {}'.format(len(screened_data)))
+    print('Total: {}'.format(len(paired_data)))
 
     table_c = pd.concat([table_a, table_b])
     table_c.sort_values(by=OPEN_TIME, inplace=True)
     table_c.reset_index(drop=True, inplace=True)
-    table_c.to_hdf('transaction/{}.h5'.format(file_name), key='df', format='table', mode='w')
+    print(table_c)
+    table_c.to_hdf('rolling_transactions/{}.h5'.format(file_name), key='df', format='table', mode='w')
 
 
-# save_transactions('SPY', 'IVV', 1)
-# save_transactions('SPY', 'IVV', 2)
-# save_transactions('SPY', 'IVV', 3)
-
-# save_transactions('SPY', 'IVV', 4)
-# save_transactions('SPY', 'IVV', 5)
-# save_transactions('SPY', 'IVV', 6)
-# save_transactions('IVV', 'VOO', 1)
-# save_transactions('IVV', 'VOO', 2)
-# save_transactions('VOO', 'SPY', 1)
-# save_transactions('VOO', 'SPY', 2)
-# save_transactions('VOO', 'SPY', 3)
-# save_transactions('VOO', 'SPY', 4)
-# save_transactions('VOO', 'SPY', 5)
-# save_transactions('VOO', 'SPY', 6)
-save_transactions('SPYG', 'VOOG')
-save_transactions('SPYV', 'VOOV')
+save_rolling_transactions('IVV', 'VOO')
+save_rolling_transactions('SPY', 'IVV')
+save_rolling_transactions('SPYG', 'VOOG')
+save_rolling_transactions('SPYV', 'VOOV')
+save_rolling_transactions('VOO', 'SPY')
