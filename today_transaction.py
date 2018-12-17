@@ -7,6 +7,14 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 from arch import arch_model
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.tsa.arima_model import ARIMA
+from pyramid.arima import auto_arima
+import warnings
+
+warnings.filterwarnings('ignore')
 
 DATETIME = 'DATETIME'
 
@@ -36,6 +44,8 @@ ASK_1 = 'ASK_1'
 BID_2 = 'BID_2'
 ASK_2 = 'ASK_2'
 
+rolling_window = 100
+
 
 def get_table(data: pd.DataFrame, open_bid, open_ask, close_bid, close_ask,
               resid, std, stop_loss=False):
@@ -52,10 +62,10 @@ def get_table(data: pd.DataFrame, open_bid, open_ask, close_bid, close_ask,
         'last_' + close_ask: LAST_ASK
     }, inplace=True)
 
-    open_table = table.loc[table[resid] < -12 * table[std], [TIME, OPEN_TIME, OPEN_BID, OPEN_ASK, LAST_BID, LAST_ASK]]
+    open_table = table.loc[table[resid] < -10 * table[std], [TIME, OPEN_TIME, OPEN_BID, OPEN_ASK, LAST_BID, LAST_ASK]]
     print('Open: {}({}%)'.format(len(open_table), len(open_table) * 100 / len(table)))
 
-    close_table = table.loc[table[resid] > 0, [TIME, CLOSE_TIME, CLOSE_BID, CLOSE_ASK]]
+    close_table = table.loc[table[resid] > 10 * table[std], [TIME, CLOSE_TIME, CLOSE_BID, CLOSE_ASK]]
     print('Close: {}({}%)'.format(len(close_table), len(close_table) * 100 / len(table)))
 
     concat_table = open_table.merge(close_table, how='outer', on=TIME, sort=True)
@@ -129,42 +139,66 @@ def save_today_transactions(etf_1, etf_2, stop_loss):
     })
     daily_ols.dropna(inplace=True)
 
+    # plot_acf(daily_ols[STD_1], title='{} & {} Autocorrelation'.format(etf_1, etf_2))
+    # plt.show()
+    # plot_pacf(daily_ols[STD_1], title='{} & {} Paritial Autocorrelation'.format(etf_1, etf_2))
+    # plt.show()
+    # plot_acf(daily_ols[STD_2], title='{} & {} Autocorrelation'.format(etf_2, etf_1))
+    # plt.show()
+    # plot_pacf(daily_ols[STD_2], title='{} & {} Paritial Autocorrelation'.format(etf_2, etf_1))
+    # plt.show()
+
+    # model = ARIMA(daily_ols[STD_1], order=(1, 0, 1))
+    # model_fit = model.fit(trend='nc', full_output=True, disp=1)
+    # print(model_fit.summary())
+    # model_fit.plot_predict()
+    # plt.title('{} & {} Standard Deviation ARIMA'.format(etf_1, etf_2))
+    # plt.show()
+
+    std_1_hats = [np.nan for _ in range(10)]
+    std_2_hats = [np.nan for _ in range(10)]
+    for i in tqdm(range(10, len(daily_ols))):
+        stepwise_model = auto_arima(daily_ols[STD_1][:(i+1)], start_p=1, start_q=1,
+                                    max_p=3, max_q=3, m=12,
+                                    start_P=0, seasonal=False, trace=False,
+                                    error_action='ignore',
+                                    suppress_warnings=True,
+                                    stepwise=True)
+        stepwise_model.fit(daily_ols[STD_1][:(i+1)])
+        future_forecast = stepwise_model.predict(n_periods=1)
+        std_1_hats.append(future_forecast[0])
+
+        stepwise_model = auto_arima(daily_ols[STD_2][:(i+1)], start_p=1, start_q=1,
+                                    max_p=3, max_q=3, m=12,
+                                    start_P=0, seasonal=False, trace=False,
+                                    error_action='ignore',
+                                    suppress_warnings=True,
+                                    stepwise=True)
+        stepwise_model.fit(daily_ols[STD_2][:(i+1)])
+        future_forecast = stepwise_model.predict(n_periods=1)
+        std_2_hats.append(future_forecast[0])
+
+    daily_ols[STD_1_HAT] = std_1_hats
+    daily_ols[STD_2_HAT] = std_2_hats
+
     paired_data.reset_index(drop=False, inplace=True)
     paired_data[DATETIME] = pd.to_datetime(paired_data[DATETIME])
     paired_data = paired_data.merge(daily_ols, on=DATE)
     paired_data.dropna(inplace=True)
     paired_data[RESID_1] = paired_data[ASK_2] - paired_data[RATIO_1] * paired_data[BID_1]
     paired_data[RESID_2] = paired_data[ASK_1] - paired_data[RATIO_2] * paired_data[BID_2]
-
-    first_day_len = len(paired_data.loc[paired_data[DATE] == paired_data[DATE].min(), :])
-    std_1_hats = [np.nan for _ in range(first_day_len)]
-    std_2_hats = [np.nan for _ in range(first_day_len)]
-    model_1 = arch_model(paired_data[RESID_1], mean='Zero', vol='GARCH', p=1, q=1)
-    model_2 = arch_model(paired_data[RESID_2], mean='Zero', vol='GARCH', p=1, q=1)
-    precurrent_count = 0
-    for date in paired_data[DATE].unique():
-        before_count = len(paired_data.loc[paired_data[DATE] < date, :])
-        current_count = len(paired_data.loc[paired_data[DATE] == date, :])
-
-        if before_count == 0:
-            std_1_hats.extend([np.nan for _ in range(current_count)])
-            std_2_hats.extend([np.nan for _ in range(current_count)])
-            precurrent_count = current_count
-            continue
-
-        model_fit_1 = model_1.fit(first_obs=before_count-precurrent_count, last_obs=before_count, disp='off', show_warning=False)
-        std_1_hats.extend(np.sqrt(model_fit_1.forecast(horizon=current_count).variance.iloc[:, 0]))
-
-        model_fit_2 = model_2.fit(first_obs=0, last_obs=before_count, disp='off', show_warning=False)
-        std_2_hats.extend(np.sqrt(model_fit_2.forecast(horizon=current_count).variance.iloc[:, 0]))
-
-        precurrent_count = current_count
-
-    paired_data.loc[:, STD_1_HAT] = std_1_hats
-    paired_data.loc[:, STD_2_HAT] = std_2_hats
-
-    paired_data.dropna(inplace=True)
     paired_data.set_index(DATETIME, inplace=True)
+
+    print(RESID_1)
+    print(paired_data[RESID_1].describe(percentiles=[0.05, 0.5, 0.95]))
+    print('Skewness: {0:.4f}'.format(paired_data[RESID_1].skew()))
+    print('Kurtosis: {0:.4f}'.format(paired_data[RESID_1].kurtosis()))
+    print('Autocorr: {0:.4f}'.format(paired_data[RESID_1].autocorr()))
+    print(RESID_2)
+    print(paired_data[RESID_2].describe(percentiles=[0.05, 0.5, 0.95]))
+    print('Skewness: {0:.4f}'.format(paired_data[RESID_2].skew()))
+    print('Kurtosis: {0:.4f}'.format(paired_data[RESID_2].kurtosis()))
+    print('Autocorr: {0:.4f}'.format(paired_data[RESID_2].autocorr()))
 
     print('ETF 1 Overvalued')
     table_a = get_table(paired_data, BID_1, ASK_2, BID_2, ASK_1, RESID_1, STD_1_HAT, stop_loss)
@@ -176,17 +210,18 @@ def save_today_transactions(etf_1, etf_2, stop_loss):
     table_c.sort_values(by=OPEN_TIME, inplace=True)
     table_c.reset_index(drop=True, inplace=True)
     if stop_loss:
-        table_c.to_hdf('yesterday_transactions_with_stop_loss/{}.h5'.format(file_name), key='df', format='table', mode='w')
+        table_c.to_hdf('today_transactions_with_stop_loss/{}.h5'.format(file_name), key='df', format='table',
+                       mode='w')
     else:
-        table_c.to_hdf('yesterday_transactions/{}.h5'.format(file_name), key='df', format='table', mode='w')
+        table_c.to_hdf('today_transactions/{}.h5'.format(file_name), key='df', format='table', mode='w')
 
 
 save_today_transactions('IVV', 'VOO', False)
-# save_today_transactions('SPY', 'IVV', False)
-# save_today_transactions('SPYG', 'VOOG', False)
-# save_today_transactions('SPYV', 'VOOV', False)
-# save_today_transactions('VOO', 'SPY', False)
-#
+save_today_transactions('SPY', 'IVV', False)
+save_today_transactions('SPYG', 'VOOG', False)
+save_today_transactions('SPYV', 'VOOV', False)
+save_today_transactions('VOO', 'SPY', False)
+
 # save_today_transactions('IVV', 'VOO', True)
 # save_today_transactions('SPY', 'IVV', True)
 # save_today_transactions('SPYG', 'VOOG', True)

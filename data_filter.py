@@ -9,18 +9,18 @@ import matplotlib.pyplot as plt
 DATETIME = 'DATETIME'
 
 periods = [
-    # '201601',
-    # '201602',
-    # '201603',
-    # '201604',
-    # '201605',
-    # '201606',
-    # '201607',
-    # '201608',
-    # '201609',
+    '201601',
+    '201602',
+    '201603',
+    '201604',
+    '201605',
+    '201606',
+    '201607',
+    '201608',
+    '201609',
     '201610',
-    # '201611',
-    # '201612'
+    '201611',
+    '201612'
 ]
 
 
@@ -85,10 +85,10 @@ def filter_data(etf):
         concated.to_hdf('raw_data2/{}_{}.h5'.format(etf, period), key='df', format='table', mode='w')
 
 
-# filter_data('IVV')
-# filter_data('VOO')
+filter_data('IVV')
+filter_data('VOO')
 filter_data('SPY')
-# filter_data('SPYG')
-# filter_data('VOOG')
-# filter_data('SPYV')
-# filter_data('VOOV')
+filter_data('SPYG')
+filter_data('VOOG')
+filter_data('SPYV')
+filter_data('VOOV')

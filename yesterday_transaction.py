@@ -49,10 +49,10 @@ def get_table(data: pd.DataFrame, open_bid, open_ask, close_bid, close_ask,
         'last_' + close_ask: LAST_ASK
     }, inplace=True)
 
-    open_table = table.loc[table[resid] < -12 * table[std], [TIME, OPEN_TIME, OPEN_BID, OPEN_ASK, LAST_BID, LAST_ASK]]
+    open_table = table.loc[table[resid] < -10 * table[std], [TIME, OPEN_TIME, OPEN_BID, OPEN_ASK, LAST_BID, LAST_ASK]]
     print('Open: {}({}%)'.format(len(open_table), len(open_table) * 100 / len(table)))
 
-    close_table = table.loc[table[resid] > 0, [TIME, CLOSE_TIME, CLOSE_BID, CLOSE_ASK]]
+    close_table = table.loc[table[resid] > 10 * table[std], [TIME, CLOSE_TIME, CLOSE_BID, CLOSE_ASK]]
     print('Close: {}({}%)'.format(len(close_table), len(close_table) * 100 / len(table)))
 
     concat_table = open_table.merge(close_table, how='outer', on=TIME, sort=True)
@@ -132,6 +132,17 @@ def save_yesterday_transactions(etf_1, etf_2, stop_loss):
     paired_data[RESID_1] = paired_data[ASK_2] - paired_data[RATIO_1] * paired_data[BID_1]
     paired_data[RESID_2] = paired_data[ASK_1] - paired_data[RATIO_2] * paired_data[BID_2]
     paired_data.set_index(DATETIME, inplace=True)
+
+    print(RESID_1)
+    print(paired_data[RESID_1].describe(percentiles=[]))
+    print('Skewness: {0:.4f}'.format(paired_data[RESID_1].skew()))
+    print('Kurtosis: {0:.4f}'.format(paired_data[RESID_1].kurtosis()))
+    print('Autocorr: {0:.4f}'.format(paired_data[RESID_1].autocorr()))
+    print(RESID_2)
+    print(paired_data[RESID_2].describe(percentiles=[]))
+    print('Skewness: {0:.4f}'.format(paired_data[RESID_2].skew()))
+    print('Kurtosis: {0:.4f}'.format(paired_data[RESID_2].kurtosis()))
+    print('Autocorr: {0:.4f}'.format(paired_data[RESID_2].autocorr()))
 
     print('ETF 1 Overvalued')
     table_a = get_table(paired_data, BID_1, ASK_2, BID_2, ASK_1, RESID_1, STD_1, stop_loss)

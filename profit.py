@@ -8,10 +8,12 @@ import numpy as np
 import pandas as pd
 
 directories = [
-    'original_transactions',
-    'original_transactions_with_stop_loss',
-    'yesterday_transactions',
-    'yesterday_transactions_with_stop_loss'
+    # 'original_transactions',
+    # 'original_transactions_with_stop_loss',
+    # 'yesterday_transactions',
+    # 'yesterday_transactions_with_stop_loss',
+    'today_transactions',
+    'today_transactions_with_stop_loss'
 ]
 
 maximum = 1000000
@@ -25,10 +27,12 @@ files = [
 ]
 
 titles = [
-    'Logic 1',
-    'Logic 1 & 2',
-    'Logic 3',
-    'Logic 3 & 2'
+    # 'Logic 1',
+    # 'Logic 1 & 2',
+    # 'Logic 3',
+    # 'Logic 3 & 2',
+    'Logic 4',
+    'Logic 4 & 2'
 ]
 
 
