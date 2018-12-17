@@ -141,6 +141,7 @@ def save_today_transactions(etf_1, etf_2, stop_loss):
     std_2_hats = [np.nan for _ in range(first_day_len)]
     model_1 = arch_model(paired_data[RESID_1], mean='Zero', vol='GARCH', p=1, q=1)
     model_2 = arch_model(paired_data[RESID_2], mean='Zero', vol='GARCH', p=1, q=1)
+    precurrent_count = 0
     for date in paired_data[DATE].unique():
         before_count = len(paired_data.loc[paired_data[DATE] < date, :])
         current_count = len(paired_data.loc[paired_data[DATE] == date, :])
@@ -148,17 +149,21 @@ def save_today_transactions(etf_1, etf_2, stop_loss):
         if before_count == 0:
             std_1_hats.extend([np.nan for _ in range(current_count)])
             std_2_hats.extend([np.nan for _ in range(current_count)])
+            precurrent_count = current_count
             continue
 
-        model_fit_1 = model_1.fit(first_obs=0, last_obs=before_count, disp='off', show_warning=False)
+        model_fit_1 = model_1.fit(first_obs=before_count-precurrent_count, last_obs=before_count, disp='off', show_warning=False)
         std_1_hats.extend(np.sqrt(model_fit_1.forecast(horizon=current_count).variance.iloc[:, 0]))
 
         model_fit_2 = model_2.fit(first_obs=0, last_obs=before_count, disp='off', show_warning=False)
         std_2_hats.extend(np.sqrt(model_fit_2.forecast(horizon=current_count).variance.iloc[:, 0]))
 
+        precurrent_count = current_count
+
     paired_data.loc[:, STD_1_HAT] = std_1_hats
     paired_data.loc[:, STD_2_HAT] = std_2_hats
 
+    paired_data.dropna(inplace=True)
     paired_data.set_index(DATETIME, inplace=True)
 
     print('ETF 1 Overvalued')
