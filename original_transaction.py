@@ -4,7 +4,6 @@
 :Date: 2018-11-28
 """
 import pandas as pd
-import numpy as np
 
 CLOSE_ASK = 'close_ask'
 CLOSE_BID = 'close_bid'
@@ -25,7 +24,7 @@ BID_2 = 'BID_2'
 ASK_2 = 'ASK_2'
 
 
-def get_table(data: pd.DataFrame, open_bid, open_ask, close_bid, close_ask, ratio_1, ratio_2, criteria, tol,
+def get_table(data: pd.DataFrame, open_bid, open_ask, close_bid, close_ask, ratio_1, ratio_2, criteria,
               stop_loss=False):
     table = data.copy()
     table[TIME] = table.index
@@ -45,7 +44,8 @@ def get_table(data: pd.DataFrame, open_bid, open_ask, close_bid, close_ask, rati
     open_table = table.loc[table[OPEN_SIGNAL] > criteria, [TIME, OPEN_TIME, OPEN_BID, OPEN_ASK, LAST_BID, LAST_ASK]]
     print('Open: {}({}%)'.format(len(open_table), len(open_table) * 100 / len(table)))
 
-    close_table = table.loc[np.abs(table[CLOSE_SIGNAL]) < tol, [TIME, CLOSE_TIME, CLOSE_BID, CLOSE_ASK]]
+    close_table = table.loc[
+        table[CLOSE_SIGNAL] * table[CLOSE_SIGNAL].shift() < 0, [TIME, CLOSE_TIME, CLOSE_BID, CLOSE_ASK]]
     print('Close: {}({}%)'.format(len(close_table), len(close_table) * 100 / len(table)))
 
     concat_table = open_table.merge(close_table, how='outer', on=TIME, sort=True)
@@ -77,7 +77,7 @@ def get_table(data: pd.DataFrame, open_bid, open_ask, close_bid, close_ask, rati
 
 
 # noinspection PyTypeChecker
-def save_original_transactions(etf_1, etf_2, criteria=0.002, tol=0.00001):
+def save_original_transactions(etf_1, etf_2, stop_loss, criteria=0.002):
     file_name = '{}_{}'.format(etf_1, etf_2)
     print(file_name)
     paired_data = pd.read_hdf('paired_data/{}.h5'.format(file_name), key='df')
@@ -122,86 +122,29 @@ def save_original_transactions(etf_1, etf_2, criteria=0.002, tol=0.00001):
 
     print('ETF 1 Overvalued')
     table_a = get_table(paired_data, BID_1, ASK_2, BID_2, ASK_1, ratio_etf1_per_etf2,
-                        ratio_etf2_per_etf1, criteria, tol)
+                        ratio_etf2_per_etf1, criteria, stop_loss)
     print('ETF 2 Overvalued')
     table_b = get_table(paired_data, BID_2, ASK_1, BID_1, ASK_2, ratio_etf2_per_etf1,
-                        ratio_etf1_per_etf2, criteria, tol)
+                        ratio_etf1_per_etf2, criteria, stop_loss)
     print('Total: {}'.format(len(paired_data)))
 
     table_c = pd.concat([table_a, table_b])
     table_c.sort_values(by=OPEN_TIME, inplace=True)
     table_c.reset_index(drop=True, inplace=True)
-    print(table_c)
-    table_c.to_hdf('original_transactions/{}.h5'.format(file_name), key='df', format='table', mode='w')
-
-
-# noinspection PyTypeChecker
-def save_stop_loss_transactions(etf_1, etf_2, criteria=0.002, tol=0.00001):
-    file_name = '{}_{}'.format(etf_1, etf_2)
-    print(file_name)
-    paired_data = pd.read_hdf('paired_data/{}.h5'.format(file_name), key='df')
-
-    #     VOO - 0.91 * IVV
-    #     IVV - 1.10 * VOO
-    if etf_1 == 'IVV' and etf_2 == 'VOO':
-        ratio_etf1_per_etf2 = 1.102
-        ratio_etf2_per_etf1 = 1 / ratio_etf1_per_etf2
-
-    #     SPY - 1.09 * VOO
-    #     VOO - 0.92 * SPY
-    elif etf_1 == 'SPY' and etf_2 == 'VOO':
-        ratio_etf1_per_etf2 = 1.086869
-        ratio_etf2_per_etf1 = 0.920049
-    elif etf_1 == 'VOO' and etf_2 == 'SPY':
-        ratio_etf1_per_etf2 = 0.920049
-        ratio_etf2_per_etf1 = 1.086869
-
-    #     SPY - 0.99 * IVV
-    #     IVV - 1.01 * SPY
-    elif etf_1 == 'SPY' and etf_2 == 'IVV':
-        ratio_etf1_per_etf2 = 0.989176
-        ratio_etf2_per_etf1 = 1.010909
-    elif etf_1 == 'IVV' and etf_2 == 'SPY':
-        ratio_etf1_per_etf2 = 1.010909
-        ratio_etf2_per_etf1 = 0.989176
-
-    #     SPYG - 0.96 * VOOG
-    #     VOOG - 1.04 * SPYG
-    elif etf_1 == 'SPYG' and etf_2 == 'VOOG':
-        ratio_etf1_per_etf2 = 0.964036
-        ratio_etf2_per_etf1 = 1.037193
-
-    #     SPYV - 1.12 * VOOV
-    #     VOOV - 0.89 * SPYV
-    elif etf_1 == 'SPYV' and etf_2 == 'VOOV':
-        ratio_etf1_per_etf2 = 1.124
-        ratio_etf2_per_etf1 = 1 / ratio_etf1_per_etf2
+    if stop_loss:
+        table_c.to_hdf('original_transactions_with_stop_loss/{}.h5'.format(file_name), key='df', format='table', mode='w')
     else:
-        raise NameError('여기 없는 코드를 입력했습니다.')
-
-    print('ETF 1 Overvalued')
-    table_a = get_table(paired_data, BID_1, ASK_2, BID_2, ASK_1, ratio_etf1_per_etf2,
-                        ratio_etf2_per_etf1, criteria, tol, True)
-    print('ETF 2 Overvalued')
-    table_b = get_table(paired_data, BID_2, ASK_1, BID_1, ASK_2, ratio_etf2_per_etf1,
-                        ratio_etf1_per_etf2, criteria, tol, True)
-    print('Total: {}'.format(len(paired_data)))
-
-    table_c = pd.concat([table_a, table_b])
-    table_c.sort_values(by=OPEN_TIME, inplace=True)
-    table_c.reset_index(drop=True, inplace=True)
-    print(table_c)
-    table_c.to_hdf('stop_loss_transactions/{}.h5'.format(file_name), key='df', format='table', mode='w')
+        table_c.to_hdf('original_transactions/{}.h5'.format(file_name), key='df', format='table', mode='w')
 
 
-save_original_transactions('IVV', 'VOO')
-save_original_transactions('SPY', 'IVV')
-save_original_transactions('SPYG', 'VOOG')
-save_original_transactions('SPYV', 'VOOV')
-save_original_transactions('VOO', 'SPY')
+save_original_transactions('IVV', 'VOO', False)
+save_original_transactions('SPY', 'IVV', False)
+save_original_transactions('SPYG', 'VOOG', False)
+save_original_transactions('SPYV', 'VOOV', False)
+save_original_transactions('VOO', 'SPY', False)
 
-save_stop_loss_transactions('IVV', 'VOO')
-save_stop_loss_transactions('SPY', 'IVV')
-save_stop_loss_transactions('SPYG', 'VOOG')
-save_stop_loss_transactions('SPYV', 'VOOV')
-save_stop_loss_transactions('VOO', 'SPY')
+save_original_transactions('IVV', 'VOO', True)
+save_original_transactions('SPY', 'IVV', True)
+save_original_transactions('SPYG', 'VOOG', True)
+save_original_transactions('SPYV', 'VOOV', True)
+save_original_transactions('VOO', 'SPY', True)
